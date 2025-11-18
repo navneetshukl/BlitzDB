@@ -17,5 +17,5 @@ func setUpFlags(){
 func main(){
 	setUpFlags()
 	log.Println("Starting BlitzDB 🎇")
-	server.RunSyncTCPServer()
+	server.RunAsyncTCPServer()
 }

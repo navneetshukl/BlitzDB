@@ -16,6 +16,6 @@ WORKDIR /app
 
 COPY --from=builder /blitzdb /app/blitzdb
 
-EXPOSE 8080
+EXPOSE 9999
 
 CMD ["/app/blitzdb"]

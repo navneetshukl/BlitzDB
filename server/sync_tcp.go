@@ -12,18 +12,18 @@ import (
 	"github.com/blitzdb/blitz/core"
 )
 
-func respondError(err error, c net.Conn) {
+func respondError(err error, c io.ReadWriter) {
 	c.Write([]byte(fmt.Sprintf("-%s\r\n", err)))
 }
 
-func respond(cmd *core.RedisCmd, c net.Conn) {
+func respond(cmd *core.RedisCmd, c io.ReadWriter) {
 	err := core.EvalAndRespond(cmd, c)
 	if err != nil {
 		respondError(err, c)
 	}
 }
 
-func readCommand(c net.Conn) (*core.RedisCmd, error) {
+func readCommand(c io.ReadWriter) (*core.RedisCmd, error) {
 	// TODO: max read in 1 shot is 512 bytes
 	// To allow more than 512 bytes than do repeated read until error or EOF
 	var buf []byte = make([]byte, 512)
