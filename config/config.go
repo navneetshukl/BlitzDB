@@ -1,6 +1,7 @@
 package config
 
-var(
-	Host="0.0.0.0"
-	Port=9999
-)
+
+
+var Host string = "0.0.0.0"
+var Port int = 9999
+var KeysLimit int = 5
