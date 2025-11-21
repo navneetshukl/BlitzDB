@@ -32,6 +32,8 @@ func main() {
 	config.KeysLimit = int(MAX_ALLOWED_KEY)
 	setUpFlags()
 	log.Println("Starting BlitzDB 🎇")
-	log.Println("Maximum Key Allowed is ",config.KeysLimit)
+	log.Println("Maximum Key Allowed is ", config.KeysLimit)
 	server.RunAsyncTCPServer()
+	//server.RunSyncTCPServer()
+
 }
