@@ -6,12 +6,11 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/blitzdb/blitz/config"
-	"github.com/blitzdb/blitz/core"
+	"github.com/dicedb/dice/config"
+	"github.com/dicedb/dice/core"
 )
 
 var con_clients int = 0
-
 var cronFrequency time.Duration = 1 * time.Second
 var lastCronExecTime time.Time = time.Now()
 
@@ -71,11 +70,11 @@ func RunAsyncTCPServer() error {
 	}
 
 	for {
-
 		if time.Now().After(lastCronExecTime.Add(cronFrequency)) {
 			core.DeleteExpiredKeys()
 			lastCronExecTime = time.Now()
 		}
+
 		// see if any FD is ready for an IO
 		nevents, e := syscall.EpollWait(epollFD, events[:], -1)
 		if e != nil {
@@ -106,13 +105,13 @@ func RunAsyncTCPServer() error {
 				}
 			} else {
 				comm := core.FDComm{Fd: int(events[i].Fd)}
-				cmd, err := readCommand(comm)
+				cmds, err := readCommands(comm)
 				if err != nil {
 					syscall.Close(int(events[i].Fd))
 					con_clients -= 1
 					continue
 				}
-				respond(cmd, comm)
+				respond(cmds, comm)
 			}
 		}
 	}
