@@ -6,8 +6,8 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/dicedb/dice/config"
-	"github.com/dicedb/dice/core"
+	"github.com/blitzdb/blitz/config"
+	"github.com/blitzdb/blitz/core"
 )
 
 var con_clients int = 0
