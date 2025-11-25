@@ -11,11 +11,27 @@ func evictFirst() {
 	}
 }
 
+func evictAllkeysRandom(){
+	evictCount:=int64(config.EvictionRatio*float64(config.KeysLimit))
+
+	for k:=range store{
+		Del(k)
+		evictCount--
+		if evictCount<=0{
+			break
+		}
+	}
+}
+
 // TODO: Make the eviction strategy configuration driven
 // TODO: Support multiple eviction strategies
 func evict() {
 	switch config.EvictionStrategy {
 	case "simple-first":
 		evictFirst()
+
+	case "allkeys-random":
+		evictAllkeysRandom()
+
 	}
 }
