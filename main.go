@@ -4,7 +4,10 @@ import (
 	"flag"
 	"log"
 	"os"
+	"os/signal"
 	"strconv"
+	"sync"
+	"syscall"
 
 	"github.com/blitzdb/blitz/config"
 	"github.com/blitzdb/blitz/server"
@@ -33,7 +36,20 @@ func main() {
 	setUpFlags()
 	log.Println("Starting BlitzDB 🎇")
 	log.Println("Maximum Key Allowed is ", config.KeysLimit)
-	server.RunAsyncTCPServer()
+
+	var sigs chan os.Signal=make(chan os.Signal,1)
+	signal.Notify(sigs,syscall.SIGTERM,syscall.SIGINT)
+
+	var wg sync.WaitGroup
+	wg.Add(2)
+
+	go server.RunAsyncTCPServer()
+	go server.WaitForSignal(&wg,sigs)
+
+	wg.Wait()
+
+
+	//server.RunAsyncTCPServer()
 	//server.RunSyncTCPServer()
 
 }
