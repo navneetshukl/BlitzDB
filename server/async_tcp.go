@@ -3,6 +3,9 @@ package server
 import (
 	"log"
 	"net"
+	"os"
+	"sync"
+	"sync/atomic"
 	"syscall"
 	"time"
 
@@ -20,7 +23,12 @@ const EngineStatus_SHUTTING_DOWN int32 = 1 << 3
 
 var eStatus int32 = EngineStatus_WAITING
 
-func RunAsyncTCPServer() error {
+func RunAsyncTCPServer(wg *sync.WaitGroup) error {
+	defer wg.Done()
+	defer func() {
+		atomic.StoreInt32(&eStatus, EngineStatus_SHUTTING_DOWN)
+	}()
+
 	log.Println("starting an asynchronous TCP server on", config.Host, config.Port)
 
 	max_clients := 20000
@@ -42,6 +50,7 @@ func RunAsyncTCPServer() error {
 
 	// Bind the IP and the port
 	ip4 := net.ParseIP(config.Host)
+
 	if err = syscall.Bind(serverFD, &syscall.SockaddrInet4{
 		Port: config.Port,
 		Addr: [4]byte{ip4[0], ip4[1], ip4[2], ip4[3]},
@@ -75,16 +84,39 @@ func RunAsyncTCPServer() error {
 		return err
 	}
 
-	for {
+	// loop until the server is not shutting down
+	for atomic.LoadInt32(&eStatus) != EngineStatus_SHUTTING_DOWN {
+
 		if time.Now().After(lastCronExecTime.Add(cronFrequency)) {
 			core.DeleteExpiredKeys()
 			lastCronExecTime = time.Now()
 		}
 
+		// Say, the Engine triggered SHUTTING down when the control flow is here ->
+		// Current: Engine status == WAITING
+		// Update: Engine status = SHUTTING_DOWN
+		// Then we have to exit (handled in Signal Handler)
+
 		// see if any FD is ready for an IO
 		nevents, e := syscall.EpollWait(epollFD, events[:], -1)
 		if e != nil {
 			continue
+		}
+
+		// Here, we do not want server to go back from SHUTTING DOWN
+		// to BUSY
+		// If the engine status == SHUTTING_DOWN over here ->
+		// We have to exit
+		// hence the only legal transitiion is from WAITING to BUSY
+		// if that does not happen then we can exit.
+
+		// mark engine as BUSY only when it is in the waiting state
+		if !atomic.CompareAndSwapInt32(&eStatus, EngineStatus_WAITING, EngineStatus_BUSY) {
+			// if swap unsuccessful then the existing status is not WAITING, but something else
+			switch eStatus {
+			case EngineStatus_SHUTTING_DOWN:
+				return nil
+			}
 		}
 
 		for i := 0; i < nevents; i++ {
@@ -120,5 +152,26 @@ func RunAsyncTCPServer() error {
 				respond(cmds, comm)
 			}
 		}
+
+		// mark engine as WAITING
+		// no contention as the signal handler is blocked until
+		// the engine is BUSY
+		atomic.StoreInt32(&eStatus, EngineStatus_WAITING)
 	}
+
+	return nil
+}
+
+
+func WaitForSignal(wg *sync.WaitGroup,sigs chan os.Signal){
+	defer wg.Done()
+	<-sigs
+
+	for atomic.LoadInt32(&eStatus)==EngineStatus_BUSY{
+
+	}
+
+	atomic.StoreInt32(&eStatus,EngineStatus_SHUTTING_DOWN)
+	core.ShutDown()
+	os.Exit(0)
 }

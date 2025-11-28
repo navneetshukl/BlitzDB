@@ -43,7 +43,7 @@ func main() {
 	var wg sync.WaitGroup
 	wg.Add(2)
 
-	go server.RunAsyncTCPServer()
+	go server.RunAsyncTCPServer(&wg)
 	go server.WaitForSignal(&wg,sigs)
 
 	wg.Wait()
