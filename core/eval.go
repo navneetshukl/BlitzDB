@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
-	"io"
 	"strconv"
 	"time"
 )
@@ -220,39 +219,56 @@ func evalSLEEP(args []string) []byte {
 	time.Sleep(time.Duration(durationSec) * time.Second)
 	return RESP_OK
 }
-func EvalAndRespond(cmds RedisCmds, c io.ReadWriter) {
-	var response []byte
-	buf := bytes.NewBuffer(response)
 
-	for _, cmd := range cmds {
-		switch cmd.Cmd {
-		case "PING":
-			buf.Write(evalPING(cmd.Args))
-		case "SET":
-			buf.Write(evalSET(cmd.Args))
-		case "GET":
-			buf.Write(evalGET(cmd.Args))
-		case "TTL":
-			buf.Write(evalTTL(cmd.Args))
-		case "DEL":
-			buf.Write(evalDEL(cmd.Args))
-		case "EXPIRE":
-			buf.Write(evalEXPIRE(cmd.Args))
-		case "BGREWRITEAOF":
-			buf.Write(evalBGREWRITEAOF(cmd.Args))
-		case "INCR":
-			buf.Write(evalINCR(cmd.Args))
-		case "INFO":
-			buf.Write(evalINFO(cmd.Args))
-		case "CLIENT":
-			buf.Write(evalCLIENT(cmd.Args))
-		case "SLEEP":
-			buf.Write(evalSLEEP(cmd.Args))
-		case "LATENCY":
-			buf.Write(evalLATENCY(cmd.Args))
-		default:
-			buf.Write(evalPING(cmd.Args))
+func evalMulti(args []string) []byte {
+	return RESP_OK
+}
+func executeCommand(cmd *RedisCmd, c *Client) []byte {
+	switch cmd.Cmd {
+	case "PING":
+		return evalPING(cmd.Args)
+	case "SET":
+		return evalSET(cmd.Args)
+	case "GET":
+		return evalGET(cmd.Args)
+	case "TTL":
+		return evalTTL(cmd.Args)
+	case "DEL":
+		return evalDEL(cmd.Args)
+	case "EXPIRE":
+		return evalEXPIRE(cmd.Args)
+	case "BGREWRITEAOF":
+		return evalBGREWRITEAOF(cmd.Args)
+	case "INCR":
+		return evalINCR(cmd.Args)
+	case "INFO":
+		return evalINFO(cmd.Args)
+	case "CLIENT":
+		return evalCLIENT(cmd.Args)
+	case "SLEEP":
+		return evalSLEEP(cmd.Args)
+	case "LATENCY":
+		return evalLATENCY(cmd.Args)
+	case "MULTI":
+		c.TxnBegin()
+		return evalMulti(cmd.Args)
+	case "EXEC":
+		if !c.isTxn {
+			return Encode(errors.New("ERR EXEC without MULTI"), false)
 		}
+		return c.TxnExec()
+
+	case "DISCARD":
+		if !c.isTxn {
+			return Encode(errors.New("ERR DISCARD without MULTI"), false)
+		}
+		c.TxnDiscard()
+		return RESP_OK
+	default:
+		return evalPING(cmd.Args)
 	}
-	c.Write(buf.Bytes())
+}
+
+func executeCommandToBuffer(cmd *RedisCmd, buf *bytes.Buffer, c *Client) {
+	buf.Write(executeCommand(cmd, c))
 }
