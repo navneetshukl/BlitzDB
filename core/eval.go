@@ -14,6 +14,13 @@ var RESP_ZERO []byte = []byte(":0\r\n")
 var RESP_ONE []byte = []byte(":1\r\n")
 var RESP_MINUS_1 []byte = []byte(":-1\r\n")
 var RESP_MINUS_2 []byte = []byte(":-2\r\n")
+var RESP_QUEUED []byte = []byte("+QUEUED\r\n")
+
+var txnCommands map[string]bool
+
+func init() {
+	txnCommands = map[string]bool{"EXEC": true, "DISCARD": true}
+}
 
 func evalPING(args []string) []byte {
 	var b []byte
@@ -271,4 +278,32 @@ func executeCommand(cmd *RedisCmd, c *Client) []byte {
 
 func executeCommandToBuffer(cmd *RedisCmd, buf *bytes.Buffer, c *Client) {
 	buf.Write(executeCommand(cmd, c))
+}
+
+func EvalAndRespond(cmds RedisCmds, c *Client) {
+	var response []byte
+	buf := bytes.NewBuffer(response)
+
+	for _, cmd := range cmds {
+		if !c.isTxn {
+			executeCommandToBuffer(cmd, buf, c)
+			continue
+		}
+
+		// if txn in progress,we enqueue the command and add
+		// queued response to buffer
+
+		if !txnCommands[cmd.Cmd] {
+			// if the command is queueable than enqueue
+			c.TxnQueue(cmd)
+			buf.Write(RESP_QUEUED)
+
+		} else {
+			// if txn is active and the command is non-queuable
+			// ex: EXEC, DISCARD
+			// we execute the command and gather the response in buffer
+			executeCommandToBuffer(cmd, buf, c)
+		}
+	}
+	c.Write(buf.Bytes())
 }

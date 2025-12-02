@@ -9,19 +9,46 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/blitzdb/blitz/config"
-	"github.com/blitzdb/blitz/core"
+	"github.com/dicedb/dice/config"
+	"github.com/dicedb/dice/core"
 )
 
-var con_clients int = 0
 var cronFrequency time.Duration = 1 * time.Second
 var lastCronExecTime time.Time = time.Now()
 
 const EngineStatus_WAITING int32 = 1 << 1
 const EngineStatus_BUSY int32 = 1 << 2
 const EngineStatus_SHUTTING_DOWN int32 = 1 << 3
+const EngineStatus_TRANSACTION int32 = 1 << 4
 
 var eStatus int32 = EngineStatus_WAITING
+
+var connectedClients map[int]*core.Client
+
+func init() {
+	connectedClients = make(map[int]*core.Client)
+}
+
+func WaitForSignal(wg *sync.WaitGroup, sigs chan os.Signal) {
+	defer wg.Done()
+	<-sigs
+
+	// if server is busy continue to wait
+	for atomic.LoadInt32(&eStatus) == EngineStatus_BUSY {
+	}
+
+	// CRITICAL TO HANDLE
+	// We do not want server to ever go back to BUSY state
+	// when control flow is here ->
+
+	// immediately set the status to be SHUTTING DOWN
+	// the only place where we can set the status to be SHUTTING DOWN
+	atomic.StoreInt32(&eStatus, EngineStatus_SHUTTING_DOWN)
+
+	// if server is in any other state, initiate a shutdown
+	core.Shutdown()
+	os.Exit(0)
+}
 
 func RunAsyncTCPServer(wg *sync.WaitGroup) error {
 	defer wg.Done()
@@ -86,7 +113,6 @@ func RunAsyncTCPServer(wg *sync.WaitGroup) error {
 
 	// loop until the server is not shutting down
 	for atomic.LoadInt32(&eStatus) != EngineStatus_SHUTTING_DOWN {
-
 		if time.Now().After(lastCronExecTime.Add(cronFrequency)) {
 			core.DeleteExpiredKeys()
 			lastCronExecTime = time.Now()
@@ -129,8 +155,7 @@ func RunAsyncTCPServer(wg *sync.WaitGroup) error {
 					continue
 				}
 
-				// increase the number of concurrent clients count
-				con_clients++
+				connectedClients[fd] = core.NewClient(fd)
 				syscall.SetNonblock(serverFD, true)
 
 				// add this new TCP connection to be monitored
@@ -142,11 +167,14 @@ func RunAsyncTCPServer(wg *sync.WaitGroup) error {
 					log.Fatal(err)
 				}
 			} else {
-				comm := core.FDComm{Fd: int(events[i].Fd)}
+				comm := connectedClients[int(events[i].Fd)]
+				if comm == nil {
+					continue
+				}
 				cmds, err := readCommands(comm)
 				if err != nil {
 					syscall.Close(int(events[i].Fd))
-					con_clients -= 1
+					delete(connectedClients, int(events[i].Fd))
 					continue
 				}
 				respond(cmds, comm)
@@ -160,18 +188,4 @@ func RunAsyncTCPServer(wg *sync.WaitGroup) error {
 	}
 
 	return nil
-}
-
-
-func WaitForSignal(wg *sync.WaitGroup,sigs chan os.Signal){
-	defer wg.Done()
-	<-sigs
-
-	for atomic.LoadInt32(&eStatus)==EngineStatus_BUSY{
-
-	}
-
-	atomic.StoreInt32(&eStatus,EngineStatus_SHUTTING_DOWN)
-	core.ShutDown()
-	os.Exit(0)
 }
