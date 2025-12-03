@@ -1,1 +1,1 @@
-Redis implementation in golang
+Minimal Redis implementation in golang
